@@ -26,8 +26,6 @@ func main() {
 	reqBody, _ := establishCommandConnection(commandConnectionEndpoint, sessionID)
 
 	describeCommand(reqBody, rtspEndpoint, 1)
-	setupCommand(reqBody, rtspEndpoint, 2)
-	playCommand(reqBody, rtspEndpoint, 3)
 	fmt.Println("describe command has been sent")
 
 	receiveData(respData.Body)
@@ -52,8 +50,17 @@ func establishDataConnection(url string, sessionID string) (*http.Response, *htt
 
 func receiveData(reader io.Reader) {
 	for {
-		data := bytes.NewBuffer(make([]byte, 0))
-		fmt.Println("received data from data connection", data)
+		data := make([]byte, 1024) // Adjust the buffer size based on your needs
+		n, err := reader.Read(data)
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("data connection closed")
+				return
+			}
+			log.Println("error reading data:", err)
+			return
+		}
+		fmt.Printf("received data from data connection: %s\n", data[:n])
 		time.Sleep(100 * time.Millisecond)
 	}
 }
