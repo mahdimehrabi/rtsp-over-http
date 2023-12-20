@@ -23,7 +23,10 @@ func main() {
 	}
 	commandConnectionEndpoint = replaceCommandConnectionIP(respData, commandConnectionEndpoint)
 	fmt.Println("data connection established status=%d", respData.StatusCode)
-	reqBody, _ := establishCommandConnection(commandConnectionEndpoint, sessionID)
+	reqBody, respCommand, _ := establishCommandConnection(commandConnectionEndpoint, sessionID)
+	if respCommand.StatusCode != http.StatusOK {
+		log.Fatalf("failed to establish command connection status code %d", respCommand.StatusCode)
+	}
 
 	describeCommand(reqBody, rtspEndpoint, 1)
 	fmt.Println("describe command has been sent")
@@ -65,10 +68,10 @@ func receiveData(reader io.Reader) {
 	}
 }
 
-func establishCommandConnection(url string, sessionID string) (*bytes.Buffer, *http.Client) {
+func establishCommandConnection(url string, sessionID string) (*bytes.Buffer, *http.Response, *http.Client) {
 	client := http.Client{}
 	reqBody := bytes.NewBuffer(make([]byte, 0))
-	req, err := http.NewRequest(http.MethodGet, url, reqBody)
+	req, err := http.NewRequest(http.MethodPost, url, reqBody)
 	if err != nil {
 		panic(err)
 	}
@@ -76,9 +79,11 @@ func establishCommandConnection(url string, sessionID string) (*bytes.Buffer, *h
 	req.Header.Add("Content-Length", "32767")
 	req.Header.Add("Pragma", "no-cache")
 	req.Header.Add("Accept", " application/x-rtsp-tunnelled")
-	go client.Do(req)
-	time.Sleep(2 * time.Second)
-	return reqBody, &client
+	res, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	return reqBody, res, &client
 }
 
 func replaceCommandConnectionIP(resp *http.Response, commandURL string) string {
