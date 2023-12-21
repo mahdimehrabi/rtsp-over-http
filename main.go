@@ -13,21 +13,27 @@ import (
 )
 
 func main() {
-	dataConnectionEndpoint := "http://root:admin123456@172.24.90.42/axis-media/media.amp?videocodec=h264&audio=0"
-	commandConnectionEndpoint := "http://root:admin123456@172.24.90.42/axis-media/media.amp?videocodec=h264&audio=0"
-	rtspEndpoint := "rtsp://root:admin123456@172.24.90.42/axis-media/media.amp?videocodec=h264&audio=0"
+	//dataConnectionEndpoint := "http://root:admin123456@172.24.90.42/axis-media/media.amp"
+	//commandConnectionEndpoint := "http://root:admin123456@172.24.90.42/axis-media/media.amp"
+	//rtspEndpoint := "rtsp://root:admin123456@172.24.90.42/axis-media/media.amp"
+
+	go setup()
+	dataConnectionEndpoint := "http://root:admin123456@localhost:8080/dump"
+	commandConnectionEndpoint := "http://root:admin123456@localhost:8080/dump"
+	rtspEndpoint := "rtsp://root:admin123456@localhost:8080/dump"
+
 	sessionID := uuid.New().String()
 	respData, _ := establishDataConnection(dataConnectionEndpoint, sessionID)
 	if respData.StatusCode != http.StatusOK {
 		log.Fatalf("failed to establish data connection status code %d", respData.StatusCode)
 	}
 	fmt.Println("data connection established status=%d", respData.StatusCode)
-	go receiveData(respData.Body)
+	go receiveData(respData)
 
 	commandConnectionEndpoint = replaceCommandConnectionIP(respData, commandConnectionEndpoint)
 	_, commandClient := establishCommandConnection(commandConnectionEndpoint, sessionID)
 
-	describeCommand(commandClient, commandConnectionEndpoint, rtspEndpoint, 1)
+	go describeCommand(commandClient, commandConnectionEndpoint, rtspEndpoint, 1, sessionID)
 	fmt.Println("describe command has been sent")
 
 	time.Sleep(100 * time.Second)
@@ -50,10 +56,10 @@ func establishDataConnection(url string, sessionID string) (*http.Response, *htt
 	return resp, &client
 }
 
-func receiveData(reader io.Reader) {
+func receiveData(resp *http.Response) {
 	for {
-		data := make([]byte, 4096) // Adjust the buffer size based on your needs
-		n, err := reader.Read(data)
+		buf := bytes.NewBuffer(make([]byte, 0))
+		_, err := io.Copy(buf, resp.Body)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("data connection closed")
@@ -62,7 +68,7 @@ func receiveData(reader io.Reader) {
 			log.Println("error reading data:", err)
 			return
 		}
-		fmt.Printf("received data from data connection: %s\n", data[:n])
+		fmt.Printf("received data from data connection: %s\n", buf.String())
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -97,7 +103,7 @@ func replaceCommandConnectionIP(resp *http.Response, commandURL string) string {
 	return u.String()
 }
 
-func describeCommand(client *http.Client, commandEndpoint string, rtspEndpoint string, cseqValue int) {
+func describeCommand(client *http.Client, commandEndpoint string, rtspEndpoint string, cseqValue int, sessionID string) {
 	reqBody := bytes.NewBuffer(make([]byte, 0))
 	rtspCommand := fmt.Sprintf("DESCRIBE %s RTSP/1.0\r\nCSeq: %d\r\nUser-Agent: Axis AMC\r\nAccept: application/sdp\r\n\r\n", rtspEndpoint, cseqValue)
 	encoder := base64.NewEncoder(base64.StdEncoding, reqBody)
@@ -107,14 +113,18 @@ func describeCommand(client *http.Client, commandEndpoint string, rtspEndpoint s
 	}
 
 	req, err := http.NewRequest(http.MethodPost, commandEndpoint, reqBody)
+	req.Header.Add("x-sessioncookie", sessionID)
+	req.Header.Add("Content-Length", "32767")
+	req.Header.Add("Pragma", "no-cache")
+	req.Header.Add("Accept", "application/x-rtsp-tunnelled")
 	if err != nil {
 		log.Fatal(err)
 	}
-	resp, err := client.Do(req)
+	_, err = client.Do(req)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(resp)
+	//fmt.Println(resp)
 }
 func setupCommand(reqBody *bytes.Buffer, rtspEndpoint string, cseqValue int) {
 	encoder := base64.NewEncoder(base64.StdEncoding, reqBody)
