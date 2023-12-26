@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/base64"
 	"fmt"
 	"github.com/google/uuid"
@@ -73,8 +72,8 @@ func establishDataConnection(serverURL string, sessionID string) {
 
 func receiveData(resp net.Conn) {
 	for {
-		bf := bytes.NewBuffer(make([]byte, 0))
-		_, err := io.Copy(bf, resp)
+		bt := make([]byte, 1024)
+		n, err := resp.Read(bt)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("data connection closed (EOF)")
@@ -83,7 +82,7 @@ func receiveData(resp net.Conn) {
 			log.Println("error reading data:", err)
 			return
 		}
-		fmt.Printf("received data from data connection: %s\n", bf.String())
+		fmt.Printf("received data from data connection: %s\n", bt[:n])
 		time.Sleep(100 * time.Millisecond)
 	}
 }
