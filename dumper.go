@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -31,11 +33,32 @@ func dumpHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Body:")
 	fmt.Printf("%s\n", body)
 
-	// Respond with a simple message
-	w.WriteHeader(http.StatusOK)
-	for {
-		time.Sleep(1 * time.Second)
-		fmt.Fprint(w, "Request data dumped successfully!")
+	// Respond with a simple message if its GET
+	if r.Method == http.MethodGet {
+		go func() {
+			w.WriteHeader(http.StatusOK)
+			for {
+				time.Sleep(1 * time.Second)
+				fmt.Fprint(w, "Request data dumped successfully!")
+			}
+		}()
+	} else {
+
+		//request is post
+		for {
+			buf := bytes.NewBuffer(make([]byte, 0))
+			_, err := io.Copy(buf, r.Body)
+			if err != nil {
+				if err == io.EOF {
+					fmt.Println("eof request post")
+					return
+				}
+				log.Println("error reading request post:", err)
+				return
+			}
+			fmt.Printf("received data from data request post: %s\n", buf.String())
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 }
 

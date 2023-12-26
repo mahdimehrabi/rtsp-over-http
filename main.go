@@ -23,12 +23,8 @@ func main() {
 	rtspEndpoint := "rtsp://root:admin123456@localhost:8080/dump"
 
 	sessionID := uuid.New().String()
-	respData, _ := establishDataConnection(dataConnectionEndpoint, sessionID)
-	if respData.StatusCode != http.StatusOK {
-		log.Fatalf("failed to establish data connection status code %d", respData.StatusCode)
-	}
+	go establishDataConnection(dataConnectionEndpoint, sessionID)
 	fmt.Println("data connection established status=%d", respData.StatusCode)
-	go receiveData(respData)
 
 	commandConnectionEndpoint = replaceCommandConnectionIP(respData, commandConnectionEndpoint)
 	_, commandClient := establishCommandConnection(commandConnectionEndpoint, sessionID)
@@ -53,6 +49,8 @@ func establishDataConnection(url string, sessionID string) (*http.Response, *htt
 	if err != nil {
 		panic(err)
 	}
+	receiveData(resp)
+
 	return resp, &client
 }
 
