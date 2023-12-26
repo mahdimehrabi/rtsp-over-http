@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -37,30 +38,44 @@ func main() {
 	time.Sleep(100 * time.Second)
 }
 
-func establishDataConnection(url string, sessionID string) (*http.Response, *http.Client) {
-	client := http.Client{}
-	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
+func establishDataConnection(serverURL string, sessionID string) {
+	// Parse the server URL
+	parsedURL, err := url.Parse(serverURL)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("Error parsing server URL:", err)
+		return
 	}
-	req.Header.Add("x-sessioncookie", sessionID)
-	req.Header.Add("Cache-Control", "no-store")
-	req.Header.Add("Pragma", "no-cache")
-	req.Header.Add("Accept", " application/x-rtsp-tunnelled")
-	req.Header.Add("Content-Length", "32767")
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	receiveData(resp)
 
-	return resp, &client
+	// Create a TCP connection to the server
+	conn, err := net.Dial("tcp", parsedURL.Host)
+	if err != nil {
+		fmt.Println("Error connecting to server:", err)
+		return
+	}
+	defer conn.Close()
+
+	request := fmt.Sprintf("GET %s HTTP/1.0\r\n"+
+		"Host: %s\r\n"+
+		"x-sessioncookie: %s\r\n"+
+		"Cache-Control: no-store\r\n"+
+		"Pragma: no-cache\r\n"+
+		"Accept: application/x-rtsp-tunnelled\r\n"+
+		"Content-Length: 32767\r\n"+
+		"\r\n", parsedURL.Path,
+		parsedURL.Hostname(), sessionID)
+
+	_, err = conn.Write([]byte(request))
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		return
+	}
+	receiveData(conn)
 }
 
-func receiveData(resp *http.Response) {
+func receiveData(resp net.Conn) {
 	for {
 		bf := bytes.NewBuffer(make([]byte, 0))
-		_, err := io.Copy(bf, resp.Body)
+		_, err := io.Copy(bf, resp)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("data connection closed (EOF)")
@@ -113,35 +128,6 @@ func describeCommand(req *http.Request, commandEndpoint string, rtspEndpoint str
 		log.Fatal(err)
 	}
 	err = req.Write(reqBody)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-func setupCommand(reqBody *bytes.Buffer, rtspEndpoint string, cseqValue int) {
-	encoder := base64.NewEncoder(base64.StdEncoding, reqBody)
-
-	setupCommand := fmt.Sprintf("SETUP %s RTSP/1.0\r\nCSeq: %d\r\nTransport: <transport-specifier>\r\n\r\n", rtspEndpoint, cseqValue)
-	_, err := encoder.Write([]byte(setupCommand))
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func playCommand(reqBody *bytes.Buffer, rtspEndpoint string, cseqValue int) {
-	encoder := base64.NewEncoder(base64.StdEncoding, reqBody)
-
-	playCommand := fmt.Sprintf("PLAY %s RTSP/1.0\r\nCSeq: %d\r\n\r\n", rtspEndpoint, cseqValue)
-	_, err := encoder.Write([]byte(playCommand))
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func teardownCommand(reqBody *bytes.Buffer, rtspEndpoint string, cseqValue int) {
-	encoder := base64.NewEncoder(base64.StdEncoding, reqBody)
-
-	teardownCommand := fmt.Sprintf("TEARDOWN %s RTSP/1.0\r\nCSeq: %d\r\n\r\n", rtspEndpoint, cseqValue)
-	_, err := encoder.Write([]byte(teardownCommand))
 	if err != nil {
 		log.Fatal(err)
 	}
