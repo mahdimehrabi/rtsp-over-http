@@ -24,12 +24,14 @@ func main() {
 
 	sessionID := uuid.New().String()
 	go establishDataConnection(dataConnectionEndpoint, sessionID)
-	fmt.Println("data connection established status=%d", respData.StatusCode)
+	time.Sleep(1 * time.Second) //wait for establishing data connection
 
-	commandConnectionEndpoint = replaceCommandConnectionIP(respData, commandConnectionEndpoint)
-	_, commandClient := establishCommandConnection(commandConnectionEndpoint, sessionID)
+	//commandConnectionEndpoint = replaceCommandConnectionIP(respData, commandConnectionEndpoint)
+	commandReq, _ := establishCommandConnection(commandConnectionEndpoint, sessionID)
+	time.Sleep(1 * time.Second)
+	fmt.Println("command connection established successfully")
 
-	go describeCommand(commandClient, commandConnectionEndpoint, rtspEndpoint, 1, sessionID)
+	go describeCommand(commandReq, commandConnectionEndpoint, rtspEndpoint, 1, sessionID)
 	fmt.Println("describe command has been sent")
 
 	time.Sleep(100 * time.Second)
@@ -39,15 +41,16 @@ func establishDataConnection(url string, sessionID string) (*http.Response, *htt
 	client := http.Client{}
 	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	req.Header.Add("x-sessioncookie", sessionID)
 	req.Header.Add("Cache-Control", "no-store")
 	req.Header.Add("Pragma", "no-cache")
 	req.Header.Add("Accept", " application/x-rtsp-tunnelled")
+	req.Header.Add("Content-Length", "32767")
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	receiveData(resp)
 
@@ -56,17 +59,17 @@ func establishDataConnection(url string, sessionID string) (*http.Response, *htt
 
 func receiveData(resp *http.Response) {
 	for {
-		buf := bytes.NewBuffer(make([]byte, 0))
-		_, err := io.Copy(buf, resp.Body)
+		bf := bytes.NewBuffer(make([]byte, 0))
+		_, err := io.Copy(bf, resp.Body)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Println("data connection closed")
+				fmt.Println("data connection closed (EOF)")
 				return
 			}
 			log.Println("error reading data:", err)
 			return
 		}
-		fmt.Printf("received data from data connection: %s\n", buf.String())
+		fmt.Printf("received data from data connection: %s\n", bf.String())
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -76,7 +79,7 @@ func establishCommandConnection(url string, sessionID string) (*http.Request, *h
 	reqBody := bytes.NewBuffer(make([]byte, 0))
 	req, err := http.NewRequest(http.MethodPost, url, reqBody)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	req.Header.Add("x-sessioncookie", sessionID)
 	req.Header.Add("Content-Length", "32767")
@@ -101,7 +104,7 @@ func replaceCommandConnectionIP(resp *http.Response, commandURL string) string {
 	return u.String()
 }
 
-func describeCommand(client *http.Client, commandEndpoint string, rtspEndpoint string, cseqValue int, sessionID string) {
+func describeCommand(req *http.Request, commandEndpoint string, rtspEndpoint string, cseqValue int, sessionID string) {
 	reqBody := bytes.NewBuffer(make([]byte, 0))
 	rtspCommand := fmt.Sprintf("DESCRIBE %s RTSP/1.0\r\nCSeq: %d\r\nUser-Agent: Axis AMC\r\nAccept: application/sdp\r\n\r\n", rtspEndpoint, cseqValue)
 	encoder := base64.NewEncoder(base64.StdEncoding, reqBody)
@@ -109,20 +112,10 @@ func describeCommand(client *http.Client, commandEndpoint string, rtspEndpoint s
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	req, err := http.NewRequest(http.MethodPost, commandEndpoint, reqBody)
-	req.Header.Add("x-sessioncookie", sessionID)
-	req.Header.Add("Content-Length", "32767")
-	req.Header.Add("Pragma", "no-cache")
-	req.Header.Add("Accept", "application/x-rtsp-tunnelled")
+	err = req.Write(reqBody)
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, err = client.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	//fmt.Println(resp)
 }
 func setupCommand(reqBody *bytes.Buffer, rtspEndpoint string, cseqValue int) {
 	encoder := base64.NewEncoder(base64.StdEncoding, reqBody)

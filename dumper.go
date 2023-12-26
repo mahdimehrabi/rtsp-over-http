@@ -32,16 +32,18 @@ func dumpHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Body:")
 	fmt.Printf("%s\n", body)
-
+	w.Header().Add("Content-Length", r.Header.Get("Content-Length"))
 	// Respond with a simple message if its GET
 	if r.Method == http.MethodGet {
-		go func() {
-			w.WriteHeader(http.StatusOK)
-			for {
-				time.Sleep(1 * time.Second)
-				fmt.Fprint(w, "Request data dumped successfully!")
+		w.WriteHeader(http.StatusOK)
+
+		for i := 0; i < 5; i++ {
+			time.Sleep(1 * time.Second)
+			_, err := w.Write([]byte(" a data connection simple response "))
+			if err != nil {
+				log.Fatal(err)
 			}
-		}()
+		}
 	} else {
 
 		//request is post
