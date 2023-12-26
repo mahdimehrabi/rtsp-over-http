@@ -14,9 +14,9 @@ import (
 )
 
 func main() {
-	//dataConnectionEndpoint := "http://root:admin123456@172.24.90.42/axis-media/media.amp"
-	//commandConnectionEndpoint := "http://root:admin123456@172.24.90.42/axis-media/media.amp"
-	//rtspEndpoint := "rtsp://root:admin123456@172.24.90.42/axis-media/media.amp"
+	//dataConnectionEndpoint := "http://root:admin123456@172.24.90.42:80/axis-media/media.amp"
+	//commandConnectionEndpoint := "http://root:admin123456@172.24.90.42:80/axis-media/media.amp"
+	//rtspEndpoint := "rtsp://root:admin123456@172.24.90.42:80/axis-media/media.amp"
 
 	go setup()
 	dataConnectionEndpoint := "http://root:admin123456@localhost:8080/dump"
@@ -24,7 +24,7 @@ func main() {
 	rtspEndpoint := "rtsp://root:admin123456@localhost:8080/dump"
 
 	sessionID := uuid.New().String()
-	go establishDataConnection(dataConnectionEndpoint, sessionID)
+	establishDataConnection(dataConnectionEndpoint, sessionID)
 	time.Sleep(1 * time.Second) //wait for establishing data connection
 
 	//commandConnectionEndpoint = replaceCommandConnectionIP(respData, commandConnectionEndpoint)
@@ -32,7 +32,7 @@ func main() {
 	time.Sleep(1 * time.Second)
 	fmt.Println("command connection established successfully")
 
-	go describeCommand(conn, commandConnectionEndpoint, rtspEndpoint, 1, sessionID)
+	go describeCommand(conn, commandConnectionEndpoint, rtspEndpoint, 1)
 	fmt.Println("describe command has been sent")
 
 	time.Sleep(100 * time.Second)
@@ -52,7 +52,6 @@ func establishDataConnection(serverURL string, sessionID string) {
 		fmt.Println("Error connecting to server:", err)
 		return
 	}
-	defer conn.Close()
 
 	request := fmt.Sprintf("GET %s HTTP/1.0\r\n"+
 		"Host: %s\r\n"+
@@ -69,7 +68,7 @@ func establishDataConnection(serverURL string, sessionID string) {
 		fmt.Println("Error sending request:", err)
 		return
 	}
-	receiveData(conn)
+	go receiveData(conn)
 }
 
 func receiveData(resp net.Conn) {
@@ -137,7 +136,7 @@ func replaceCommandConnectionIP(resp *http.Response, commandURL string) string {
 	return u.String()
 }
 
-func describeCommand(req net.Conn, commandEndpoint string, rtspEndpoint string, cseqValue int, sessionID string) {
+func describeCommand(req net.Conn, commandEndpoint string, rtspEndpoint string, cseqValue int) {
 	rtspCommand := fmt.Sprintf("DESCRIBE %s RTSP/1.0\r\nCSeq: %d\r\nUser-Agent: Axis AMC\r\nAccept: application/sdp\r\n\r\n", rtspEndpoint, cseqValue)
 	encoder := base64.NewEncoder(base64.StdEncoding, req)
 	_, err := encoder.Write([]byte(rtspCommand))
